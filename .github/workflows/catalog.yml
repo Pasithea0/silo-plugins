@@ -1,0 +1,49 @@
+name: Catalog
+
+# The catalog lists the latest release of each plugin, so it is rebuilt rather
+# than edited. Hourly is enough: Silo itself checks for plugin updates once a
+# day, and a plugin release can also ask for a rebuild immediately by
+# dispatching `plugin_release_published` at this repository.
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [plugin_release_published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: catalog
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Build the catalog from each plugin's latest release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/build_catalog.py
+
+      - name: Verify it the way a host reads it
+        run: go run ./tools/verify manifest.json
+
+      - name: Commit if it changed
+        run: |
+          if git diff --quiet -- manifest.json; then
+            echo "catalog unchanged"
+            exit 0
+          fi
+          git config user.name "catalog-bot"
+          git config user.email "catalog-bot@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "catalog: refresh from plugin releases"
+          git push

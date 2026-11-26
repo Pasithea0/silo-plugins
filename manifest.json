@@ -1,0 +1,519 @@
+{
+  "plugins": [
+    {
+      "manifest": {
+        "plugin_id": "pasithea.link-previews",
+        "version": "0.1.2",
+        "silo_api_version": "v1",
+        "category": "Apps",
+        "presentation": {
+          "display_name": "Link Previews",
+          "summary": "Rich link previews for Silo items shared outside Silo.",
+          "description_markdown": "A link to an item in Silo shows no preview when it is pasted into Discord, Slack, Telegram, Signal, WhatsApp or iMessage: the item page needs a signed-in session, so the chat client's previewer only ever reads the word \"Silo\".\n\nThis plugin adds a preview page per item. Share the preview link instead of the item link and the chat client renders the title, year, overview and artwork; anyone who opens that same link in a browser lands on the item itself.\n\nThe page is built from the content ID in the URL plus public TMDB metadata. It never reads the library, so a preview never discloses anything about what this server holds.",
+          "setup_markdown": "1. **Add a TMDB credential.** Link Previews reads public metadata from TMDB, so it needs a key of its own: a v4 read access token (the long `eyJ…` token) or a v3 API key (32 characters), both from your TMDB account under Settings → API. This key is separate from the one Silo's own metadata provider uses.\n\n2. **Set the public URL.** Admin → Settings → General → Network → Public URL. Preview pages link their artwork by absolute address, so the site logo and the share links the picker builds are only complete once Silo knows its own address. Set it to whatever clients reach this server at, a Tailscale name included.\n\n3. **Share preview links.** Open Link Previews in the sidebar, paste an item link from your address bar, and copy the preview link it gives you. Previews look like `/api/v2/plugin-content/plugins/<id>/p/movie-tmdb-1340206`.\n\n**The item link itself cannot be given a preview.** A plugin is only reachable under its own path, so `/item/…` keeps serving the app shell; the preview link is a separate address that sends browsers on to the item.\n\n**What a preview shows.** The title, year, overview and artwork come from TMDB; nothing comes from the library, and artwork is fetched from TMDB's CDN rather than from this server. By default the page answers for any well-formed ID, whether or not the item is held: if it answered only for held items, anyone could walk TMDB IDs and learn exactly what this server contains. Links that are not items preview as the server itself, using the site name, description and logo below.",
+          "homepage_url": "https://github.com/Pasithea0/silo-plugin-link-previews",
+          "source_url": "https://github.com/Pasithea0/silo-plugin-link-previews",
+          "support_url": "https://github.com/Pasithea0/silo-plugin-link-previews/issues",
+          "publisher_name": "Pasithea",
+          "publisher_url": "https://github.com/Pasithea0",
+          "license_spdx": "MIT"
+        },
+        "supported_platforms": [
+          {
+            "os": "linux",
+            "arch": "amd64"
+          },
+          {
+            "os": "linux",
+            "arch": "arm64"
+          },
+          {
+            "os": "darwin",
+            "arch": "arm64"
+          }
+        ],
+        "metadata": {
+          "configuration_check": true
+        },
+        "capabilities": [
+          {
+            "type": "http_routes.v1",
+            "id": "previews",
+            "display_name": "Link previews",
+            "description": "Serves a public preview page for items and for the server itself, the logo that page shows, a member-only lookup the picker page uses, and the picker page itself."
+          }
+        ],
+        "http_routes": [
+          {
+            "id": "preview",
+            "method": "GET",
+            "path": "/p/*",
+            "access": "public"
+          },
+          {
+            "id": "assets",
+            "method": "GET",
+            "path": "/assets/*",
+            "access": "public"
+          },
+          {
+            "id": "card",
+            "method": "GET",
+            "path": "/api/card",
+            "access": "authenticated"
+          },
+          {
+            "id": "picker",
+            "method": "GET",
+            "path": "/",
+            "access": "authenticated",
+            "navigable": true,
+            "navigation_label": "Link Previews",
+            "navigation_kind": "user"
+          }
+        ],
+        "global_config_schema": [
+          {
+            "key": "tmdb",
+            "title": "TMDB",
+            "description": "Public metadata and artwork for previews comes from TMDB. The key is only used by this plugin; Silo's own metadata provider keeps its own.",
+            "required": true,
+            "json_schema": "{\"type\":\"object\",\"properties\":{\"api_key\":{\"type\":\"string\"},\"read_token\":{\"type\":\"string\"},\"language\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+            "admin_form": {
+              "submit_label": "Save TMDB settings",
+              "fields": [
+                {
+                  "key": "api_key",
+                  "label": "API key",
+                  "description": "The v3 API key from your TMDB account (32 characters). Leave empty when using a read access token.",
+                  "control": "ADMIN_FORM_CONTROL_PASSWORD",
+                  "secret": true
+                },
+                {
+                  "key": "read_token",
+                  "label": "Read access token",
+                  "description": "The v4 read access token from your TMDB account (the long eyJ… token). Used instead of the API key when set.",
+                  "control": "ADMIN_FORM_CONTROL_PASSWORD",
+                  "secret": true
+                },
+                {
+                  "key": "language",
+                  "label": "Metadata language",
+                  "description": "Language previews are written in, as a TMDB language tag such as en-US or de-DE.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "placeholder": "en-US",
+                  "default_value": "en-US"
+                }
+              ]
+            }
+          },
+          {
+            "key": "previews",
+            "title": "Previews",
+            "description": "What a preview link shows and how much it costs to serve.",
+            "required": false,
+            "json_schema": "{\"type\":\"object\",\"properties\":{\"site_name\":{\"type\":\"string\"},\"site_description\":{\"type\":\"string\"},\"site_image_url\":{\"type\":\"string\"},\"prefer_backdrop\":{\"type\":\"boolean\"},\"require_library_item\":{\"type\":\"boolean\"},\"cache_ttl_seconds\":{\"type\":\"integer\"},\"max_requests_per_second\":{\"type\":\"number\"}},\"additionalProperties\":false}",
+            "admin_form": {
+              "submit_label": "Save preview settings",
+              "fields": [
+                {
+                  "key": "site_name",
+                  "label": "Site name",
+                  "description": "Shown above the title in the preview card.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "placeholder": "Silo",
+                  "default_value": "Silo"
+                },
+                {
+                  "key": "site_description",
+                  "label": "Site description",
+                  "description": "The line under the name when a link that is not an item is shared: the home page, a library, a settings page.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "placeholder": "Self-hosted media server.",
+                  "default_value": "Self-hosted media server."
+                },
+                {
+                  "key": "site_image_url",
+                  "label": "Site image",
+                  "description": "Absolute address of the image used when a link that is not an item is shared. Leave empty to use the logo this plugin serves.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "placeholder": "https://example.com/logo.png"
+                },
+                {
+                  "key": "prefer_backdrop",
+                  "label": "Use landscape artwork",
+                  "description": "Banner-style previews use a backdrop where one exists and fall back to the poster. Turn this off to always show the poster.",
+                  "control": "ADMIN_FORM_CONTROL_SWITCH",
+                  "default_value": true
+                },
+                {
+                  "key": "require_library_item",
+                  "label": "Only preview items in the library",
+                  "description": "Off by default. Turning it on makes a preview 404 for anything this server does not hold, which turns the public route into an enumeration oracle: anyone who can reach it can test TMDB IDs against your library and learn what you have. It also makes previews fail for links to items you removed.",
+                  "control": "ADMIN_FORM_CONTROL_SWITCH",
+                  "default_value": false
+                },
+                {
+                  "key": "cache_ttl_seconds",
+                  "label": "Cache lifetime (seconds)",
+                  "description": "How long a preview page may be cached, by this plugin and by anything between it and the chat client. Preview answers are cached in memory for the same period.",
+                  "control": "ADMIN_FORM_CONTROL_NUMBER",
+                  "default_value": 3600
+                },
+                {
+                  "key": "max_requests_per_second",
+                  "label": "Public route rate limit",
+                  "description": "Requests per second the public preview route will answer before it starts replying 429. Members using the picker are not limited.",
+                  "control": "ADMIN_FORM_CONTROL_NUMBER",
+                  "default_value": 5
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "repo_url": "https://github.com/Pasithea0/silo-plugin-link-previews",
+      "binaries": {
+        "darwin/arm64": {
+          "url": "https://github.com/Pasithea0/silo-plugin-link-previews/releases/download/v0.1.2/plugin-darwin-arm64",
+          "checksum": "3f3b22bf81bbb15377710a59231d0dfcef9a48b84ab32114be5017be35d824d3"
+        },
+        "linux/amd64": {
+          "url": "https://github.com/Pasithea0/silo-plugin-link-previews/releases/download/v0.1.2/plugin-linux-amd64",
+          "checksum": "e348fc041d7514ee4ee68f8002324639eb76675960ecfe728529f8d5038cb666"
+        },
+        "linux/arm64": {
+          "url": "https://github.com/Pasithea0/silo-plugin-link-previews/releases/download/v0.1.2/plugin-linux-arm64",
+          "checksum": "abe16f2de4e00706f1a3f538a35b29b566a0f6cf27436ae39b086668b63ee1b7"
+        }
+      },
+      "tag": "v0.1.2",
+      "checksums_url": "https://github.com/Pasithea0/silo-plugin-link-previews/releases/download/v0.1.2/checksums.txt"
+    },
+    {
+      "manifest": {
+        "plugin_id": "pasithea.tiny-subtitles",
+        "version": "0.1.1",
+        "silo_api_version": "v1",
+        "presentation": {
+          "display_name": "Tiny Subtitles",
+          "summary": "Generates subtitles for Silo on your own hardware: a local speech model transcribes the audio, then Desert Ant Align snaps every word to the waveform.",
+          "description_markdown": "Tiny Subtitles answers Silo's own AI subtitle pipeline as an OpenAI-compatible transcription endpoint, so Silo keeps doing the work it already does well: cutting the audio, building cues, storing the track, and streaming it to Apple, Android, Jellyfin and web players, including session-attached jobs that caption something while it plays.\n\nThe speech recognition runs on the server that hosts Silo, not in the cloud. Two engines are available:\n\n- **Voz** (Desert Ant, default): an on-device recognizer with word-level timings, installed by the plugin itself with the host's own npm.\n- **Endpoint**: a local Whisper server you already run (speaches, whisper.cpp's server). Point the plugin at it and it adds Align on top.\n\nEither way, **Align** (Desert Ant, ~1.2 MB) then corrects each word's start and end against the audio. On the Desert Ant benchmark that takes raw recognizer word timings from 100.8 ms mean error to 45.0 ms, which is the difference between a caption that lights up on the word and one that is a beat behind it. Align covers English, Spanish, French, Italian, Portuguese, German, Japanese, Korean and Chinese; other languages keep the recognizer's own timings.\n\nNothing but the model weights, which are downloaded once, ever leaves the server.",
+          "setup_markdown": "1. Install the plugin (upload the release zip under **Admin → Plugins**).\n2. Open the plugin's settings page and press **Check Connection**. The first run installs the worker's Node packages and downloads the models; the plugin's **Tiny Subtitles** page (Admin → Plugins → Tiny Subtitles) shows the progress.\n3. In **Admin Settings → AI Services**, add a provider with base URL `http://127.0.0.1:8899/v1`, declare the speech-to-text capability, and pick the model name shown on the plugin page (default `on-device-align`).\n4. Set `ai.asr_model` to that model name, choose the provider for speech-to-text, and turn on **Create subtitles from audio** (`subtitle_ai.transcribe_enabled`).\n5. Use **Create subtitles from audio** on any title, or start a live transcription from the player, and the track is generated on this machine.\n\nThe Silo server image already ships Node 24 for its Jellyfin Web installer, so the default engine needs no extra software. If the plugin runs on a host without node, set `node_path`, or switch the engine to `endpoint` and point it at a local Whisper server.",
+          "homepage_url": "https://github.com/Pasithea0/silo-plugin-tiny-subtitles",
+          "source_url": "https://github.com/Pasithea0/silo-plugin-tiny-subtitles",
+          "support_url": "https://github.com/Pasithea0/silo-plugin-tiny-subtitles/issues",
+          "changelog_url": "https://github.com/Pasithea0/silo-plugin-tiny-subtitles/releases",
+          "publisher_name": "Pasithea0",
+          "publisher_url": "https://github.com/Pasithea0",
+          "license_spdx": "Apache-2.0"
+        },
+        "supported_platforms": [
+          {
+            "os": "linux",
+            "arch": "amd64"
+          },
+          {
+            "os": "linux",
+            "arch": "arm64"
+          }
+        ],
+        "metadata": {
+          "configuration_check": true
+        },
+        "capabilities": [
+          {
+            "type": "http_routes.v1",
+            "id": "status",
+            "display_name": "Tiny Subtitles",
+            "description": "Status page: engine, worker, models and the last chunks transcribed."
+          },
+          {
+            "type": "scheduled_task.v1",
+            "id": "warm",
+            "display_name": "Warm models",
+            "description": "Install the worker's Node packages and load the speech and refinement models.",
+            "metadata": {
+              "display_name": "Tiny Subtitles: warm models",
+              "description": "Install the worker's Node packages and load the Desert Ant models into memory."
+            }
+          }
+        ],
+        "http_routes": [
+          {
+            "id": "status",
+            "method": "GET",
+            "path": "/status",
+            "access": "admin",
+            "navigable": true,
+            "navigation_label": "Tiny Subtitles",
+            "navigation_kind": "admin"
+          }
+        ],
+        "global_config_schema": [
+          {
+            "key": "settings",
+            "title": "Tiny Subtitles",
+            "description": "Choose the recognizer, the word-timestamp refinement, and where the plugin listens.",
+            "json_schema": "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"engine\":{\"type\":\"string\"},\"asr_endpoint\":{\"type\":\"string\"},\"asr_endpoint_model\":{\"type\":\"string\"},\"asr_endpoint_api_key\":{\"type\":\"string\"},\"refine\":{\"type\":\"boolean\"},\"model_name\":{\"type\":\"string\"},\"listen_host\":{\"type\":\"string\"},\"listen_port\":{\"type\":\"integer\"},\"api_token\":{\"type\":\"string\"},\"node_path\":{\"type\":\"string\"},\"npm_path\":{\"type\":\"string\"},\"data_dir\":{\"type\":\"string\"},\"model_dir\":{\"type\":\"string\"},\"max_audio_seconds\":{\"type\":\"integer\"},\"request_timeout_seconds\":{\"type\":\"integer\"},\"worker_concurrency\":{\"type\":\"integer\"},\"auto_provision\":{\"type\":\"boolean\"},\"keep_warm\":{\"type\":\"boolean\"},\"license_endpoint\":{\"type\":\"string\"},\"app_id\":{\"type\":\"string\"}}}",
+            "required": false,
+            "admin_form": {
+              "submit_label": "Save Tiny Subtitles",
+              "fields": [
+                {
+                  "key": "engine",
+                  "label": "Recognizer",
+                  "description": "Voz runs on this machine. Endpoint uses a local Whisper server you already run.",
+                  "control": "ADMIN_FORM_CONTROL_SELECT",
+                  "default_value": "voz",
+                  "options": [
+                    {
+                      "value": "voz",
+                      "label": "Voz (on this machine)",
+                      "description": "Desert Ant Voz, 337 MB of weights, downloaded once."
+                    },
+                    {
+                      "value": "endpoint",
+                      "label": "Local Whisper endpoint",
+                      "description": "Any OpenAI-compatible /v1/audio/transcriptions server."
+                    }
+                  ]
+                },
+                {
+                  "key": "asr_endpoint",
+                  "label": "Transcription endpoint base URL",
+                  "description": "For example http://127.0.0.1:8000/v1 (speaches, whisper.cpp's server).",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "placeholder": "http://127.0.0.1:8000/v1",
+                  "show_when": [
+                    {
+                      "field": "engine",
+                      "equals": [
+                        "endpoint"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "key": "asr_endpoint_model",
+                  "label": "Endpoint model name",
+                  "description": "The model field your server expects, for example whisper-1 or Systran/faster-whisper-large-v3.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "default_value": "whisper-1",
+                  "show_when": [
+                    {
+                      "field": "engine",
+                      "equals": [
+                        "endpoint"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "key": "asr_endpoint_api_key",
+                  "label": "Endpoint API key",
+                  "description": "Only if your server asks for one.",
+                  "control": "ADMIN_FORM_CONTROL_PASSWORD",
+                  "secret": true,
+                  "show_when": [
+                    {
+                      "field": "engine",
+                      "equals": [
+                        "endpoint"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "key": "refine",
+                  "label": "Refine word timings with Align",
+                  "description": "Desert Ant Align corrects each word's start and end against the audio. Works for de, en, es, fr, it, ja, ko, pt and zh.",
+                  "control": "ADMIN_FORM_CONTROL_SWITCH",
+                  "default_value": true
+                },
+                {
+                  "key": "model_name",
+                  "label": "Model name Silo sends",
+                  "description": "The model id this endpoint advertises; Silo puts it in ai.asr_model.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "default_value": "on-device-align"
+                },
+                {
+                  "key": "listen_host",
+                  "label": "Listen address",
+                  "description": "Keep 127.0.0.1 when Silo runs on this host. Use 0.0.0.0 to let another machine reach it.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "default_value": "127.0.0.1"
+                },
+                {
+                  "key": "listen_port",
+                  "label": "Listen port",
+                  "description": "The port the OpenAI-compatible endpoint binds.",
+                  "control": "ADMIN_FORM_CONTROL_NUMBER",
+                  "default_value": 8899
+                },
+                {
+                  "key": "api_token",
+                  "label": "Shared token",
+                  "description": "Optional. When set, every request must carry it as a bearer token.",
+                  "control": "ADMIN_FORM_CONTROL_PASSWORD",
+                  "secret": true
+                },
+                {
+                  "key": "node_path",
+                  "label": "Node executable",
+                  "description": "Where node lives. The Silo server image ships one at /usr/local/bin/node.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "default_value": "node"
+                },
+                {
+                  "key": "npm_path",
+                  "label": "npm executable",
+                  "description": "Used to install the worker's packages.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "default_value": "npm"
+                },
+                {
+                  "key": "data_dir",
+                  "label": "Data directory",
+                  "description": "Where the worker, its packages and the models live. Point it at persistent storage to keep them across plugin updates.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT"
+                },
+                {
+                  "key": "model_dir",
+                  "label": "Model directory",
+                  "description": "Where the downloaded weights live. Defaults to <data directory>/models.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT"
+                },
+                {
+                  "key": "auto_provision",
+                  "label": "Install worker packages automatically",
+                  "description": "Run npm install on first start, and after a change of engine.",
+                  "control": "ADMIN_FORM_CONTROL_SWITCH",
+                  "default_value": true
+                },
+                {
+                  "key": "keep_warm",
+                  "label": "Load models at startup",
+                  "description": "Loads the models when the plugin starts, instead of on the first subtitle request.",
+                  "control": "ADMIN_FORM_CONTROL_SWITCH",
+                  "default_value": true
+                },
+                {
+                  "key": "worker_concurrency",
+                  "label": "Parallel audio workers",
+                  "description": "How many Node workers may transcribe at once. Each one holds its own copy of the models in memory.",
+                  "control": "ADMIN_FORM_CONTROL_NUMBER",
+                  "default_value": 1,
+                  "validation": {
+                    "has_min": true,
+                    "min": 1,
+                    "has_max": true,
+                    "max": 8
+                  }
+                },
+                {
+                  "key": "max_audio_seconds",
+                  "label": "Largest accepted chunk (seconds)",
+                  "description": "Silo sends chunks of at most 600 seconds. Raise this only if you lowered Silo's own chunk length setting.",
+                  "control": "ADMIN_FORM_CONTROL_NUMBER",
+                  "default_value": 900
+                },
+                {
+                  "key": "request_timeout_seconds",
+                  "label": "Request timeout (seconds)",
+                  "description": "How long one chunk may take before it is given up on.",
+                  "control": "ADMIN_FORM_CONTROL_NUMBER",
+                  "default_value": 1200
+                },
+                {
+                  "key": "license_endpoint",
+                  "label": "Desert Ant license endpoint",
+                  "description": "Advanced. Leave empty for the default. Set it only to point the SDKs at your own endpoint.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT"
+                },
+                {
+                  "key": "app_id",
+                  "label": "Reported app id",
+                  "description": "The name the Desert Ant SDKs report when they load a model.",
+                  "control": "ADMIN_FORM_CONTROL_TEXT",
+                  "default_value": "silo-on-device-subtitles"
+                }
+              ],
+              "sections": [
+                {
+                  "key": "recognizer",
+                  "title": "Recognizer",
+                  "description": "Where the words come from.",
+                  "field_keys": [
+                    "engine",
+                    "asr_endpoint",
+                    "asr_endpoint_model",
+                    "asr_endpoint_api_key"
+                  ]
+                },
+                {
+                  "key": "align",
+                  "title": "Word timestamps",
+                  "field_keys": [
+                    "refine",
+                    "model_name"
+                  ]
+                },
+                {
+                  "key": "endpoint",
+                  "title": "Endpoint",
+                  "description": "What Silo's AI provider points at.",
+                  "field_keys": [
+                    "listen_host",
+                    "listen_port",
+                    "api_token"
+                  ]
+                },
+                {
+                  "key": "worker",
+                  "title": "Worker and models",
+                  "collapsible": true,
+                  "field_keys": [
+                    "node_path",
+                    "npm_path",
+                    "data_dir",
+                    "model_dir",
+                    "auto_provision",
+                    "keep_warm",
+                    "worker_concurrency"
+                  ]
+                },
+                {
+                  "key": "advanced",
+                  "title": "Advanced",
+                  "collapsible": true,
+                  "collapsed_default": true,
+                  "field_keys": [
+                    "max_audio_seconds",
+                    "request_timeout_seconds",
+                    "license_endpoint",
+                    "app_id"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "repo_url": "https://github.com/Pasithea0/silo-plugin-tiny-subtitles",
+      "binaries": {
+        "linux/amd64": {
+          "url": "https://github.com/Pasithea0/silo-plugin-tiny-subtitles/releases/download/v0.1.1/plugin-linux-amd64",
+          "checksum": "ea4f0536b50bef67b64219cd11ceaf4eb843cd95d0cf310cc4b6487bf9c266b7"
+        },
+        "linux/arm64": {
+          "url": "https://github.com/Pasithea0/silo-plugin-tiny-subtitles/releases/download/v0.1.1/plugin-linux-arm64",
+          "checksum": "015f4f0665c2973e36277468b82252f068e5f91c73a6e0be5c2bcd2cae5e2950"
+        }
+      },
+      "tag": "v0.1.1",
+      "checksums_url": "https://github.com/Pasithea0/silo-plugin-tiny-subtitles/releases/download/v0.1.1/checksums.txt"
+    }
+  ]
+}

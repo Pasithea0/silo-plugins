@@ -1,0 +1,10 @@
+{
+  "plugins": [
+    {
+      "repository": "Pasithea0/silo-plugin-tiny-subtitles"
+    },
+    {
+      "repository": "Pasithea0/silo-plugin-link-previews"
+    }
+  ]
+}
